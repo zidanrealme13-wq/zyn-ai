@@ -1,0 +1,30 @@
+{
+  "name": "zyn-ai-backend",
+  "version": "1.0.0",
+  "description": "ZYN AI - Cyber Security AI Command Center Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "zyn-ai",
+    "xai",
+    "chatbot",
+    "cybersecurity"
+  ],
+  "author": "ZYN AI",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

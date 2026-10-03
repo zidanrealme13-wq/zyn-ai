@@ -13,3 +13,5 @@ dist/
 build/
 tmp/
 temp/
+backend/data/users.json
+backend/uploads/
