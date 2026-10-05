@@ -23,7 +23,7 @@ function normalizeMessages(payload) {
 
 router.post("/", auth, aiRateLimit, async (req, res) => {
     try {
-        const { message, messages, history } = req.body || {};
+        const { message, messages, history, model } = req.body || {};
 
         const normalizedMessages = normalizeMessages({ messages, history });
 
@@ -42,7 +42,7 @@ router.post("/", auth, aiRateLimit, async (req, res) => {
             ? normalizedMessages.slice(0, -1)
             : [];
 
-        const response = await generateResponse(incomingMessage, historyForAi);
+        const response = await generateResponse(incomingMessage, historyForAi, model);
 
         res.json({
             success: true,
@@ -50,11 +50,16 @@ router.post("/", auth, aiRateLimit, async (req, res) => {
             content: response
         });
     } catch (error) {
-        console.error("Chat error:", error);
+        if (error instanceof Error) {
+            console.error("Chat error:", error);
+        }
 
-        res.status(500).json({
+        const status = Number.isInteger(error.status) ? error.status : 500;
+        res.status(status).json({
             success: false,
-            message: error.message || "AI failed to respond"
+            error: error.message || "AI failed to respond",
+            message: error.message || "AI failed to respond",
+            ...(error.code ? { code: error.code } : {})
         });
     }
 });

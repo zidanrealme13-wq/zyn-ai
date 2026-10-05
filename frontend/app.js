@@ -14,6 +14,7 @@
   const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:3001' : '';
   const STORAGE_KEY = 'zyn_ai_chats';
   const SETTINGS_KEY = 'zyn_ai_settings';
+  const MODEL_PREFERENCE_KEY = 'zyn_ai_model_preference';
   const AUTH_KEY = 'zyn_ai_auth';
   const MAX_TITLE_LENGTH = 40;
   const MAX_MESSAGE_LENGTH = 12000;
@@ -25,6 +26,10 @@
     currentChatId: null,
     mode: 'GENERAL',
     model: 'openrouter/auto',
+    pendingModel: 'openrouter/auto',
+    availableModels: [],
+    modelsLoaded: false,
+    providerStatuses: {},
     temperature: 0.7,
     isGenerating: false,
     abortController: null,
@@ -53,6 +58,12 @@
   const btnStop = $('#btn-stop');
   const modeSelector = $('#mode-selector');
   const modelBadge = $('#model-badge');
+  const providerOptions = $('#ai-provider-options');
+  const currentProviderLabel = $('#ai-current-provider');
+  const currentModelLabel = $('#ai-current-model');
+  const modelStatus = $('#ai-model-status');
+  const modelMessage = $('#ai-model-message');
+  const applyModelButton = $('#ai-model-apply');
   const searchInput = $('#search-input');
   const settingsPanel = $('#settings-panel');
   const toast = $('#toast');
@@ -174,7 +185,6 @@
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        state.model = typeof s.model === 'string' && s.model ? s.model : state.model;
         state.temperature = typeof s.temperature === 'number' ? s.temperature : state.temperature;
         state.animations = s.animations !== false;
         state.compact = !!s.compact;
@@ -187,7 +197,6 @@
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        model: state.model,
         temperature: state.temperature,
         animations: state.animations,
         compact: state.compact,
@@ -196,40 +205,140 @@
     } catch (e) { /* ignore */ }
   }
 
+  function modelPreferenceKey() {
+    const userId = state.user?.id || 'guest';
+    return `${MODEL_PREFERENCE_KEY}:${encodeURIComponent(userId)}`;
+  }
+
+  function loadModelPreference() {
+    try {
+      return localStorage.getItem(modelPreferenceKey());
+    } catch (error) {
+      console.warn('[ZYN] Failed to load AI model preference:', error.message);
+      return null;
+    }
+  }
+
+  function providerName(modelId) {
+    if (modelId === 'openrouter/auto') return 'OpenRouter';
+    if (typeof modelId === 'string' && modelId.startsWith('groq/qwen/')) return 'Groq';
+    return '';
+  }
+
+  function modelName(model) {
+    const label = typeof model?.label === 'string' ? model.label : model?.id || '';
+    const separator = label.indexOf(' · ');
+    return separator === -1 ? label : label.slice(separator + 3);
+  }
+
+  function updateModelSelector() {
+    if (!providerOptions) return;
+
+    providerOptions.replaceChildren();
+    const currentModel = state.availableModels.find(model => model.id === state.model);
+    const pendingModel = state.availableModels.find(model => model.id === state.pendingModel);
+
+    currentProviderLabel.textContent = currentModel ? providerName(currentModel.id) : 'Not configured';
+    currentModelLabel.textContent = currentModel ? modelName(currentModel) : 'No supported model configured';
+    modelBadge.textContent = currentModel?.label || 'No model configured';
+
+    for (const model of state.availableModels) {
+      const name = providerName(model.id);
+      const isActive = model.id === state.model;
+      const isRateLimited = state.providerStatuses?.[model.id] === 'rate_limited';
+      const option = document.createElement('label');
+      option.className = `ai-provider-option${isActive ? ' active' : ''}`;
+
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'ai-model-provider';
+      radio.value = model.id;
+      radio.checked = model.id === state.pendingModel;
+      radio.setAttribute('aria-label', `${name}, ${modelName(model)}`);
+
+      const radioMark = document.createElement('span');
+      radioMark.className = 'ai-provider-radio';
+      radioMark.setAttribute('aria-hidden', 'true');
+
+      const details = document.createElement('span');
+      details.className = 'ai-provider-details';
+      const provider = document.createElement('strong');
+      provider.textContent = name;
+      const description = document.createElement('small');
+      description.textContent = name === 'Groq' ? 'Qwen model via Groq' : 'AI via OpenRouter';
+      const selectedModel = document.createElement('span');
+      selectedModel.className = 'ai-provider-model';
+      selectedModel.textContent = modelName(model);
+      details.append(provider, description, selectedModel);
+
+      const status = document.createElement('span');
+      status.className = `ai-provider-status${isRateLimited ? ' rate-limited' : ''}`;
+      status.textContent = isRateLimited ? 'Rate limited' : isActive ? 'Active' : 'Available';
+
+      option.append(radio, radioMark, details, status);
+      providerOptions.append(option);
+    }
+
+    const selectedStatus = state.providerStatuses?.[state.model];
+    if (!state.modelsLoaded) {
+      modelStatus.textContent = 'Loading provider configuration from backend...';
+    } else if (!state.availableModels.length) {
+      modelStatus.textContent = 'No supported OpenRouter or Groq/Qwen model is configured on the backend.';
+    } else if (selectedStatus === 'rate_limited') {
+      modelStatus.textContent = `${providerName(state.model)} rate limit reached. Wait a moment or switch providers.`;
+    } else {
+      modelStatus.textContent = 'Availability reflects backend configuration, not a live connectivity check.';
+    }
+
+    updatePendingModelUI(pendingModel);
+  }
+
+  function updatePendingModelUI(pendingModel = state.availableModels.find(model => model.id === state.pendingModel)) {
+    modelMessage.textContent = pendingModel && pendingModel.id !== state.model
+      ? `${providerName(pendingModel.id)} will be used after you apply this change.`
+      : '';
+    applyModelButton.disabled = !pendingModel || pendingModel.id === state.model;
+  }
+
+  function saveModelPreference() {
+    try {
+      localStorage.setItem(modelPreferenceKey(), state.model);
+      return true;
+    } catch (error) {
+      console.warn('[ZYN] Failed to save AI model preference:', error.message);
+      return false;
+    }
+  }
+
   async function loadAvailableModels() {
-    const modelSelect = $('#setting-model');
     try {
       const response = await fetch(`${API_BASE}/api/config`, { signal: AbortSignal.timeout(3000) });
       if (!response.ok) throw new Error('Unable to load model configuration.');
 
       const config = await response.json();
-      const models = Array.isArray(config.models) ? config.models : [];
-      modelSelect.replaceChildren();
+      state.availableModels = (Array.isArray(config.models) ? config.models : [])
+        .filter(model => model && (
+          model.id === 'openrouter/auto' ||
+          (typeof model.id === 'string' && /^groq\/qwen\/.+$/i.test(model.id))
+        ));
+      state.modelsLoaded = true;
 
-      if (models.length === 0) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'No API key configured';
-        option.disabled = true;
-        modelSelect.append(option);
-        state.model = '';
-      } else {
-        models.forEach(model => {
-          const option = document.createElement('option');
-          option.value = model.id;
-          option.textContent = model.label;
-          modelSelect.append(option);
-        });
-        state.model = models.some(model => model.id === state.model)
-          ? state.model
-          : config.defaultModel || models[0].id;
-        modelSelect.value = state.model;
-      }
-
-      modelBadge.textContent = state.model || 'No model configured';
-      saveSettings();
+      const preference = loadModelPreference();
+      const savedModel = state.availableModels.find(model => model.id === preference);
+      const defaultModel = state.availableModels.find(model => model.id === config.defaultModel);
+      state.model = (savedModel || defaultModel || state.availableModels[0])?.id || '';
+      state.pendingModel = state.model;
+      updateModelSelector();
     } catch (error) {
       console.warn('[ZYN] Failed to load available models:', error.message);
+      state.modelsLoaded = true;
+      state.availableModels = [];
+      state.model = '';
+      state.pendingModel = '';
+      updateModelSelector();
+      modelStatus.textContent = 'Unable to load AI provider configuration. Check your connection and try again.';
+      modelMessage.textContent = '';
+      applyModelButton.disabled = true;
     }
   }
 
@@ -240,17 +349,14 @@
     if (state.theme === 'obsidian') document.body.classList.add('theme-obsidian');
     if (state.theme === 'emerald') document.body.classList.add('theme-emerald');
 
-    modelBadge.textContent = state.model;
-
     const themeSelect = $('#setting-theme');
-    const modelSelect = $('#setting-model');
     const tempRange = $('#setting-temperature');
     const tempValue = $('#temp-value');
     const animCheck = $('#setting-animation');
     const compactCheck = $('#setting-compact');
 
     if (themeSelect) themeSelect.value = state.theme;
-    if (modelSelect) modelSelect.value = state.model;
+    updateModelSelector();
     if (tempRange) {
       tempRange.value = state.temperature;
       if (tempValue) tempValue.textContent = state.temperature;
@@ -592,6 +698,7 @@
         remainingContext -= contentLength;
       }
 
+      const requestedModel = state.model;
       const response = await fetch(`${API_BASE}/api/secure-chat`, {
         method: 'POST',
         headers: {
@@ -601,7 +708,7 @@
         body: JSON.stringify({
           messages: apiMessages,
           mode: state.mode,
-          model: state.model,
+          model: requestedModel,
           temperature: state.temperature,
           stream: false
         }),
@@ -620,6 +727,10 @@
         if (response.status === 0 || !navigator.onLine) {
           errorMsg = 'Connection unavailable.';
         }
+        if (errData.code === 'RATE_LIMIT') {
+          state.providerStatuses = { ...state.providerStatuses, [requestedModel]: 'rate_limited' };
+          updateModelSelector();
+        }
 
         chat.messages.push({
           role: 'assistant',
@@ -633,6 +744,11 @@
       }
 
       const data = await response.json();
+      if (state.providerStatuses?.[requestedModel] === 'rate_limited') {
+        const { [requestedModel]: _clearedStatus, ...providerStatuses } = state.providerStatuses;
+        state.providerStatuses = providerStatuses;
+        updateModelSelector();
+      }
       const content = data.content || '';
 
       chat.messages.push({
@@ -921,10 +1037,21 @@
       saveSettings();
     });
 
-    $('#setting-model').addEventListener('change', (e) => {
-      state.model = e.target.value;
-      modelBadge.textContent = state.model;
-      saveSettings();
+    providerOptions.addEventListener('change', (event) => {
+      if (event.target.matches('input[name="ai-model-provider"]')) {
+        state.pendingModel = event.target.value;
+        updatePendingModelUI();
+      }
+    });
+
+    applyModelButton.addEventListener('click', () => {
+      if (!state.availableModels.some(model => model.id === state.pendingModel)) return;
+      state.model = state.pendingModel;
+      const saved = saveModelPreference();
+      updateModelSelector();
+      showToast(saved
+        ? `${providerName(state.model)} selected for chat.`
+        : `${providerName(state.model)} selected for this session, but the preference could not be saved.`);
     });
 
     $('#setting-temperature').addEventListener('input', (e) => {

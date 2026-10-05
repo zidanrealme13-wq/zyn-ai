@@ -237,13 +237,23 @@
             <option value="emerald">Emerald Matrix</option>
           </select>
         </div>
-        <div class="settings-section">
-          <label class="settings-label">AI Provider</label>
-          <select id="setting-model" class="settings-select">
-            <option value="openrouter/auto">OpenRouter · Auto</option>
-            <option value="groq/qwen/qwen3.8-27b">Groq · Qwen 3.8 27B</option>
-            <option value="gemini-3.8-flash">Google Gemini · Flash</option>
-          </select>
+        <div class="settings-section ai-model-section">
+          <div class="ai-model-heading">
+            <h3 class="settings-label">AI MODEL</h3>
+            <span class="ai-model-lock" aria-label="API keys stay on the backend">SECURE</span>
+          </div>
+          <div class="ai-current-model" aria-live="polite">
+            <span class="ai-model-caption">CURRENT PROVIDER</span>
+            <strong id="ai-current-provider">Loading...</strong>
+            <span id="ai-current-model" class="ai-current-model-name">Loading configured model...</span>
+          </div>
+          <div class="ai-provider-heading">
+            <span class="settings-label">AVAILABLE PROVIDERS</span>
+          </div>
+          <div id="ai-provider-options" class="ai-provider-options" role="radiogroup" aria-label="AI provider"></div>
+          <p id="ai-model-status" class="ai-model-status" aria-live="polite">Loading provider configuration from backend...</p>
+          <p id="ai-model-message" class="ai-model-message" aria-live="polite"></p>
+          <button id="ai-model-apply" class="ai-model-apply" type="button" disabled>Apply</button>
         </div>
         <div class="settings-section">
           <label class="settings-label">Temperature <span id="temp-value">0.7</span></label>
@@ -266,7 +276,7 @@
         </div>
         <div class="settings-section about">
           <h3>About ZYN AI</h3>
-          <p>ZYN AI is a Cyber Security AI Command Center interface powered by xAI.</p>
+          <p>Choose a configured OpenRouter or Groq/Qwen model for your chats.</p>
           <p class="version">Version 1.0.0</p>
           <p class="disclaimer">API key is stored only on the backend. Never share your key.</p>
         </div>

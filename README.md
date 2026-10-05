@@ -10,6 +10,8 @@ ZYN AI is a full-stack AI assistant interface inspired by futuristic cyber secur
 
 - Modern dark glass / HUD interface
 - Multiple AI modes: GENERAL, CODER, STUDY, CYBER, PROMPT
+- AI model selector for backend-configured OpenRouter and Groq/Qwen models
+- AI model preference saved per signed-in user in browser localStorage
 - Chat history stored in browser localStorage
 - Markdown + code block rendering with copy buttons
 - Secure backend (API key never reaches the frontend)
